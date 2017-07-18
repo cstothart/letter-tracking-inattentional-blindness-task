@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+
+<!-- Letter Tracking IB Task
+
+Author: Cary Stothart (cary.stothart@gmail.com)
+Version: 1.0
+
+################################# DESCRIPTION #################################
+
+This was made to be plugged into a larger experiment.  It will run by itself, 
+but the data it collects will go nowhere.
+
+If you want to store the data from this task, then, in the form tag below, you 
+will need to change the URL in the action attribute.
+
+################################### CITATION ##################################
+
+How to cite this software in APA:
+
+Stothart, C. (2015). Letter Tracking Task (Version 1) [software]. Retrieved from 
+http://cary-stothart.net/files/letter_tracking_ib_task.html.  
+     
+################################## COPYRIGHT ##################################
+
+The MIT License (MIT)
+
+Copyright (c) 2015 Cary Robert Stothart
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.     
+
+-->
+
+<html>
+<head>
+    <meta charset=\"utf-8\">
+    <title>Stothart | Letter Tracking Inattentional Blindness Task</title>
+    <style>
+    #all {
+        width: 700px;
+        margin: 10px auto 10px auto;
+        font-family: "Arial", sans-serif;
+        font-size: 20px;  
+        text-align: center;
+    } 
+    #most_canvas {
+        background-color: #777777;
+        display: block;
+        margin: 0 auto;
+    }
+    fieldset { 
+        border: 0px;
+        font-family: "Arial", sans-serif;
+        padding-left: 0px;
+        padding-right: 0px;
+    }
+    </style>
+</head>
+<body>
+<div id="all">
+    <form id="most_task" name="most_task" action="letter_tracking_ib_task.html" 
+          method="post"><fieldset> <!-- Make sure to enter the correct URL in this tag.  The default just reloads the task -->
+    <canvas id="most_canvas" width="666" height="546"></canvas>
+    <script type="text/javascript">
+    
+    // Author: Cary Stothart
+    // Date: 02/04/2014
+    
+    window.onload = function () {
+    
+        //document.getElementById("most_submit").style.visibility='hidden';
+
+        var letterArray = [],
+            cm = 43
+            canvas = document.getElementById('most_canvas'),
+            context = canvas.getContext('2d');
+            letterWidth = cm,
+            letterThickness = Math.round(0.25*cm),
+            letterYLimit = canvas.height/2 //Math.round(5.5*cm)
+            frameTime = 33,  // frameTime of 33 results in FPS of 30.
+            numLetters = 8,  // Number of letters total.  Must be an even number.
+            lastCallTime = undefined,
+            creationBottomLimit = canvas.height/2 + letterYLimit - letterWidth
+            creationTopLimit = canvas.height/2 - letterYLimit
+            fpsArray = [],
+            fpsSum = 0,
+            meanFps = 0,
+            trialFpsArray = [],
+            lineHeight = 2,
+            whiteHitCount = 0,
+            blackHitCount = 0,
+            mainTrialArray = ["end", "ibTrial", "inst", "regTrial", "inst", 
+                              "regTrial", "inst", "regTrial", "inst", 
+                              "regTrial", "inst", "regTrial"],
+            ib = false,
+            trialStartTime = 0,
+            ibPositionArray = ["pvfar", "pfar", "pnear", "line", "nnear", "nfar", 
+                             "nvfar"],                       
+            ibPosition = ibPositionArray[Math.floor((Math.random()*7)+0)],
+            partCountList = [],
+            taskCountList = [],
+            meanFpsList = [];
+        /*    
+        if (!window.requestAnimationFrame) {
+            window.requestAnimationFrame = (window.webkitRequestAnimationFrame ||
+                                            window.mozRequestAnimationFrame ||
+                                            window.msRequestAnimationFrame ||
+                                            window.oRequestAnimationFrame ||
+                                            function (callback) {
+                                                return window.setTimeout(callback, 17);
+                                            });
+        }
+        if (!window.cancelAnimationFrame) {
+            window.cancelAnimationFrame = (window.webkitCancelRequestAnimationFrame ||
+                                          window.mozCancelRequestAnimationFrame ||
+                                          window.oCancelRequestAnimationFrame ||
+                                          window.msCancelRequestAnimationFrame ||
+                                          window.clearTimeout);
+        }*/       
+        
+        window.requestAnimationFrame = function(callback) {
+            return window.setTimeout(callback, frameTime);
+        }
+        window.cancelAnimationFrame = window.clearTimeout;
+        
+        function Line(posX, posY, height) {
+            this.posX = posX;
+            this.posY = posY;
+            this.height = height;
+            this.color = "#0000FF";
+            this.draw = function() {
+                context.save();
+                context.fillStyle = this.color;
+                context.fillRect(this.posX, this.posY, canvas.width, this.height);
+                context.restore();
+            }
+        }
+        
+        function Fixation(posX, posY, height) {
+            this.posX = posX;
+            this.posY = posY;
+            this.height = height;
+            this.color = "#0000FF";
+            this.draw = function() {
+                context.save();
+                context.beginPath();
+                context.lineWidth = "3";
+                context.strokeStyle = "#0000FF";
+                context.fillStyle = "#777777";
+                context.rect(this.posX, this.posY, letterThickness, letterThickness);
+                context.stroke();
+                context.fill();
+                context.restore();
+            }
+        }
+
+        function Cross(posX, posY, dX) {
+            this.posX = posX;
+            this.posY = posY;
+            this.dX = dX;
+            this.cmVel = 3;
+            this.color = "#b2b2b2";
+            this.draw = function() {
+                context.save(); 
+                context.fillStyle = this.color;
+                context.fillRect(this.posX + letterWidth/2 - letterThickness/2, this.posY, 
+                                 letterThickness, letterWidth);
+                context.fillRect(this.posX, this.posY + letterWidth/2 - letterThickness/2, 
+                                 letterWidth, letterThickness);
+                context.restore();
+            }
+            this.move = function() {
+                this.posX += this.cmVel * this.dX;
+            }
+        }
+        
+        function L(posX, posY, color, dX, dY) {
+            this.speedSwitchTime = Math.floor(((Math.random()*300)+100)*10)
+            this.newSpeedStartTime = new Date().getTime();
+            this.letterThickness = letterThickness
+            this.width = letterWidth;            
+            this.boxLeft = 0;
+            this.boxRight = canvas.width;
+            this.boxTop = canvas.height/2 - letterYLimit;
+            this.boxBottom = canvas.height/2 + letterYLimit - this.width;
+            this.color = color;
+            this.vel = 0;
+            this.cmVel = Math.floor((Math.random()*5)+3);
+            this.dY = dY;
+            this.dX = dX;
+            this.posX = posX;
+            this.posY = posY;
+            this.hit = false;
+            this.onTop = null;
+            this.onBottom = null;
+            letterArray.push(this);
+            this.move = function() {
+                if (this.posX > this.boxRight - this.width) {
+                    this.posX = this.boxRight - this.width;
+                    this.dX *= -1;
+                }
+                if (this.posX < this.boxLeft) {
+                    this.posX = this.boxLeft;
+                    this.dX *= -1;
+                }
+                if (this.posY > this.boxBottom) {
+                    this.posY = this.boxBottom;
+                    this.dY *= -1;
+                    this.hit = false;                
+                }                    
+                if (this.posY < this.boxTop) {
+                    this.posY = this.boxTop;
+                    this.dY *= -1;
+                    this.hit = false;
+                }
+                this.time = new Date().getTime(); 
+                this.newSpeedTime = this.time - this.newSpeedStartTime
+                if (this.newSpeedTime >= this.speedSwitchTime) {
+                    this.newSpeedStartTime = new Date().getTime();
+                    this.cmVel = Math.floor((Math.random()*5)+3);
+                    if ((this.posY < this.boxBottom) && (this.posY > this.boxTop) && 
+                        (this.posX > this.boxLeft) && (this.posX < this.boxRight)) {
+                        if (Math.random()*10 > 5) {
+                            this.dX *= -1
+                        }
+                        if (Math.random()*10 > 5) {
+                            this.dY *= -1
+                        }
+                    }
+                }
+                this.vel = this.cmVel;
+                this.posX += this.vel * this.dX;
+                this.posY += this.vel * this.dY;
+                if ((this.posY + this.width < canvas.height/2) && (this.onTop != true)) {
+                    if (this.onBottom == true) {
+                        if (this.color == "#FFFFFF") {
+                            whiteHitCount++;
+                        }
+                        if (this.color == "#000000") {
+                            blackHitCount++;
+                        }
+                    }
+                    this.onTop = true;
+                    this.onBottom = false;
+                }
+                if ((this.posY > canvas.height/2) && (this.onBottom != true)) {
+                    if (this.onTop == true) {
+                        if (this.color == "#FFFFFF") {
+                            whiteHitCount++;
+                        }
+                        if (this.color == "#000000") {
+                            blackHitCount++;
+                        }
+                    }
+                    this.onTop = false;
+                    this.onBottom = true;
+                }
+            }
+            this.draw = function() {
+                this.bottomX = this.posX;
+                this.bottomY = this.posY + this.width - this.letterThickness;
+                this.topX = this.posX;
+                this.topY = this.posY;
+                context.save();
+                context.fillStyle = this.color;
+                context.fillRect(this.topX, this.topY, this.letterThickness, 
+                                 this.width - this.letterThickness);
+                context.fillRect(this.bottomX, this.bottomY, this.width, 
+                                 this.letterThickness);            
+                context.restore();
+            }
+        }    
+        
+        function T(posX, posY, color, dX, dY) {
+            this.speedSwitchTime = Math.floor(((Math.random()*300)+100)*10)
+            this.newSpeedStartTime = new Date().getTime();
+            this.letterThickness = letterThickness
+            this.width = letterWidth;            
+            this.boxLeft = 0;
+            this.boxRight = canvas.width;
+            this.boxTop = canvas.height/2 - letterYLimit;
+            this.boxBottom = canvas.height/2 + letterYLimit - this.width;
+            this.color = color;
+            this.vel = 0;
+            this.cmVel = Math.floor((Math.random()*5)+3);
+            this.dY = dY;
+            this.dX = dX;
+            this.posX = posX;
+            this.posY = posY;
+            this.onTop = null;
+            this.onBottom = null;
+            letterArray.push(this);
+            this.move = function() {
+                if (this.posX > this.boxRight - this.width) {
+                    this.posX = this.boxRight - this.width;
+                    this.dX *= -1;
+                }
+                if (this.posX < this.boxLeft) {
+                    this.posX = this.boxLeft;
+                    this.dX *= -1;
+                }
+                if (this.posY > this.boxBottom) {
+                    this.posY = this.boxBottom;
+                    this.dY *= -1;
+                    this.hit = false;
+                }                    
+                if (this.posY < this.boxTop) {
+                    this.posY = this.boxTop;
+                    this.dY *= -1;
+                    this.hit = false;
+                }
+                this.time = new Date().getTime(); 
+                this.newSpeedTime = this.time - this.newSpeedStartTime
+                if (this.newSpeedTime >= this.speedSwitchTime) {
+                    this.newSpeedStartTime = new Date().getTime();
+                    this.cmVel = Math.floor((Math.random()*5)+3); 
+                    if ((this.posY + this.width < this.boxBottom) && (this.posY > this.boxTop) && 
+                        (this.posX > this.boxLeft) && (this.posX + this.width < this.boxRight)) {
+                        if (Math.random()*10 > 5) {
+                            this.dX *= -1
+                        }
+                        if (Math.random()*10 > 5) {
+                            this.dY *= -1
+                        }
+                    }                    
+                }
+                this.vel = this.cmVel;
+                this.posX += this.vel * this.dX;
+                this.posY += this.vel * this.dY;
+                if ((this.posY + this.width < canvas.height/2) && (this.onTop != true)) {
+                    if (this.onBottom == true) {
+                        if (this.color == "#FFFFFF") {
+                            whiteHitCount++;
+                        }
+                        if (this.color == "#000000") {
+                            blackHitCount++;
+                        }
+                    }
+                    this.onTop = true;
+                    this.onBottom = false;
+                }
+                if ((this.posY > canvas.height/2) && (this.onBottom != true)) {
+                    if (this.onTop == true) {
+                        if (this.color == "#FFFFFF") {
+                            whiteHitCount++;
+                        }
+                        if (this.color == "#000000") {
+                            blackHitCount++;
+                        }
+                    }
+                    this.onTop = false;
+                    this.onBottom = true;
+                }
+            }
+            this.draw = function() {
+                this.topX = this.posX;
+                this.topY = this.posY;
+                this.bottomX = this.posX + this.width/2 - this.letterThickness/2;
+                this.bottomY = this.posY + this.letterThickness;
+                context.save();
+                context.fillStyle = this.color;
+                context.fillRect(this.topX, this.topY, this.width, 
+                                 this.letterThickness);
+                context.fillRect(this.bottomX, this.bottomY, this.letterThickness, 
+                                 this.width-this.letterThickness);            
+                context.restore();
+            }
+        }
+        
+        function createAndPlaceObjects(numObjects) {
+            var objectPosArray = [];
+                objectCount = 0;
+            for (i=0; i < numObjects; i++) {
+                var xDir = 1;
+                if (Math.random()*10 > 5) {
+                    xDir *= -1
+                }
+                flag = true;
+                while (flag) {
+                    flag = false;
+                    var x = Math.floor(Math.random()*(canvas.width-
+                                                      letterWidth)),
+                        y = Math.floor(Math.random()*(canvas.height-
+                                                      letterWidth));
+                    objectPosArray.forEach(function (element) {
+                        var xDist = x - element[0],
+                            yDist = y - element[1],
+                            letterDist = Math.sqrt((xDist*xDist) + (yDist*yDist));
+                        if (letterDist < letterWidth*2) {
+                            flag = true;
+                        }
+                        else if ((x < letterWidth*2) || (y < letterWidth*2)) {
+                            flag = true;
+                        }
+                    });
+                    if ((y < creationTopLimit) || (y > creationBottomLimit)) {
+                        flag = true;
+                    }
+                    else if ((y + letterWidth > canvas.height/2 - letterWidth*3) && 
+                             (y  < canvas.height/2 + letterWidth*3)) {
+                             flag = true
+                    }
+                    if (y > canvas.height/2) {
+                        yDir = -1
+                    }
+                    else {
+                        yDir = 1
+                    }
+                }
+                if (objectCount%2 == 0) {
+                    color = "#FFFFFF";
+                }
+                else {
+                    color = "#000000";
+                }
+                objectPosArray.push([x, y]);
+                if (objectCount >= numObjects/2) {
+                    window['T' + [i]] = new T(x, y, color, xDir, yDir);
+                }
+                else {
+                    window['L' + [i]] = new L(x, y, color, xDir, yDir);
+                }
+                objectCount++;
+            }
+        }
+        
+        function runAnimLoop () {
+            anim = window.requestAnimationFrame(runAnimLoop, canvas);
+            if(!lastCallTime) {
+                lastCallTime = new Date().getTime();
+                fps = 0;
+            }
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            line.draw();
+            fix.draw();
+            trialCurrentTime = new Date().getTime();
+            if ((ib == true) && (trialCurrentTime - trialStartTime >= 5000)) {
+                cross.move();
+                cross.draw();
+            }
+            letterArray.forEach(function(element) {
+                element.move();
+                element.draw();
+            });
+            //context.fillText(whiteHitCount, canvas.width/2, 30);                    // TEMP 
+            delta = (new Date().getTime() - lastCallTime)/1000;
+            lastCallTime = new Date().getTime();
+            fps = 1/delta;
+            if (fps < 1000) {
+                fpsArray.push(fps);
+                trialFpsArray.push(fps);
+                fpsSum += fps;
+            }
+            meanFps = fpsSum / fpsArray.length
+        }
+        
+        function singleTrial() {
+            document.removeEventListener('keydown', onResponse, false);
+            hitCount = 0;
+            whiteHitCount = 0;
+            blackHitCount = 0;
+            letterArray = [];
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            createAndPlaceObjects(numLetters)
+            line = new Line(0, canvas.height/2 - lineHeight/2, lineHeight);
+            fix = new Fixation(canvas.width/2 - letterThickness/2, canvas.height/2 - 
+                               letterThickness/2);
+            if (ib == true) {
+                if (ibPosition == "pvfar") {
+                    cross = new Cross(canvas.width, canvas.height/2 - cm*5.9 - 
+                                      letterWidth/2, -1);
+                }                
+                if (ibPosition == "pfar") {
+                    cross = new Cross(canvas.width, canvas.height/2 - cm*4.8 - 
+                                      letterWidth/2, -1);
+                }        
+                if (ibPosition == "pnear") {
+                    cross = new Cross(canvas.width, canvas.height/2 - cm*2.4 - 
+                                      letterWidth/2, -1);
+                }        
+                if (ibPosition == "line") {
+                    cross = new Cross(canvas.width, canvas.height/2 - 
+                                      letterWidth/2, -1);
+                }
+                if (ibPosition == "nnear") {
+                    cross = new Cross(canvas.width, canvas.height/2 + cm*2.4 - 
+                                      letterWidth/2, -1);
+                }            
+                if (ibPosition == "nfar") {
+                    cross = new Cross(canvas.width, canvas.height/2 + cm*4.8 - 
+                                      letterWidth/2, -1);
+                }            
+                if (ibPosition == "nvfar") {
+                    cross = new Cross(canvas.width, canvas.height/2 + cm*5.9 - 
+                                      letterWidth/2, -1);
+                }
+            }
+            //context.fillText(0, canvas.width/2, 30);                                      // TEMP 
+            line.draw()
+            fix.draw()
+            letterArray.forEach(function(element) {
+                element.draw();
+            });
+            setTimeout(function () {
+                this.trialStartTime = new Date().getTime();
+                runAnimLoop();
+            }, 2000);
+            setTimeout(function (){
+                window.cancelAnimationFrame(anim);
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                response = prompt("Please enter the number of times the White letters " +
+                                  "completely crossed the blue line");
+                taskCountList.push(whiteHitCount);
+                partCountList.push(response);
+                context.fillText("Press <ENTER> to continue.", canvas.width/2, 
+                                 canvas.height/2);            
+                document.addEventListener('keydown', onResponse, false);
+            }, 17000);
+        }
+        
+        function onResponse(event) {
+            var validResponse = false;
+            if (event.keyCode == 13) {
+                validResponse = true;
+            }
+            if (validResponse == true) {
+                trial = mainTrialArray.pop()
+                if (trial == "regTrial") {
+                    ib = false;
+                    singleTrial();
+                }
+                if (trial == "ibTrial") {
+                    ib = true;
+                    singleTrial();
+                }
+                if (trial == "end") {
+                    end();
+                }
+                if (trial == "inst") {
+                    inst();
+                }              
+            }    
+        }
+        
+        function end() {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.fillText("Thank you for completing the task!", canvas.width/2,
+                             canvas.height/2);
+            document.most_task.ib_task_t1_part_count.value = partCountList[0];
+            document.most_task.ib_task_t2_part_count.value = partCountList[1];
+            document.most_task.ib_task_t3_part_count.value = partCountList[2];
+            document.most_task.ib_task_t4_part_count.value = partCountList[3];
+            document.most_task.ib_task_t5_part_count.value = partCountList[4];
+            document.most_task.ib_task_t6_part_count.value = partCountList[5];
+            document.most_task.ib_task_t1_task_count.value = taskCountList[0];
+            document.most_task.ib_task_t2_task_count.value = taskCountList[1];
+            document.most_task.ib_task_t3_task_count.value = taskCountList[2];
+            document.most_task.ib_task_t4_task_count.value = taskCountList[3];
+            document.most_task.ib_task_t5_task_count.value = taskCountList[4];
+            document.most_task.ib_task_t6_task_count.value = taskCountList[5];
+            document.most_task.ib_task_mean_fps.value = meanFps;
+            document.most_task.ib_object_pos.value = ibPosition;
+            //document.getElementById("most_submit").style.visibility = 'visible';
+        }
+        
+        function inst() {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.fillText("Please count the number of times the White letters completely", 
+                             canvas.width/2, canvas.height/2 - 200);
+            context.fillText("cross the blue line.", canvas.width/2,
+                             canvas.height/2 - 175);
+            context.fillText("Do not include the line crossings you counted in the prevous", 
+                             canvas.width/2, canvas.height/2 - 125);
+            context.fillText("trial in your count for this trial.", canvas.width/2,
+                             canvas.height/2 - 100);
+            context.fillText("Remember to keep your eyes on the blue square while you", 
+                             canvas.width/2, canvas.height/2 - 50);
+            context.fillText("while you complete this task.", 
+                             canvas.width/2, canvas.height/2 - 25);                         
+            context.fillText("Press <ENTER> when you are ready.", canvas.width/2, 
+                             canvas.height/2 + 25);                    
+        }    
+        
+        function main() {
+            document.addEventListener("keydown", onResponse, false)
+            context.textAlign="center";
+            context.font="20px Arial";
+            context.fillStyle = "#FFFFFF";
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            context.fillText("(DO NOT PRESS THE BACK BUTTON DURING THIS HIT)", canvas.width/2,
+                             canvas.height/2 - 200); 
+            context.fillText("In this task, you will be presented with 4 Black letters and", 
+                              canvas.width/2, canvas.height/2 - 150);
+            context.fillText("4 White letters, as well as a blue line with a square in",
+                             canvas.width/2, canvas.height/2 - 125);
+            context.fillText("the center.",
+                             canvas.width/2, canvas.height/2 - 100);                         
+            context.fillText("The letters will move about the display at various speeds.", 
+                             canvas.width/2, canvas.height/2 - 50);
+            context.fillText("Your task will be to count the number of times the White", 
+                             canvas.width/2, canvas.height/2);
+            context.fillText("letters completely cross the blue line.", canvas.width/2,
+                             canvas.height/2 + 25);
+            context.fillText("Please keep your eyes on the blue square while you complete", 
+                             canvas.width/2, canvas.height/2 + 75);
+            context.fillText("this task.", canvas.width/2, canvas.height/2 + 100); 
+            context.fillText("In order for this task to run at the highest quality possible,", canvas.width/2,
+                             canvas.height/2 + 150); 
+            context.fillText("it is very important that you close any other open browser", canvas.width/2,
+                             canvas.height/2 + 175);   
+            context.fillText("tabs or windows.  Please do this now before you start the task.", canvas.width/2,
+                             canvas.height/2 + 200);                                
+            context.fillText("Press <ENTER> when you are ready to begin the task.", canvas.width/2,
+                             canvas.height/2 + 250);                                
+                             
+        }
+        
+        main()
+    }
+    </script>
+    <input type="hidden" name="ib_task_t1_task_count" value="" />
+    <input type="hidden" name="ib_task_t2_task_count" value="" />
+    <input type="hidden" name="ib_task_t3_task_count" value="" />
+    <input type="hidden" name="ib_task_t4_task_count" value="" />
+    <input type="hidden" name="ib_task_t5_task_count" value="" />
+    <input type="hidden" name="ib_task_t6_task_count" value="" />
+    <input type="hidden" name="ib_task_t1_part_count" value="" />
+    <input type="hidden" name="ib_task_t2_part_count" value="" />
+    <input type="hidden" name="ib_task_t3_part_count" value="" />
+    <input type="hidden" name="ib_task_t4_part_count" value="" />
+    <input type="hidden" name="ib_task_t5_part_count" value="" />
+    <input type="hidden" name="ib_task_t6_part_count" value="" />
+    <input type="hidden" name="ib_object_pos" value="" />
+    <input type="hidden" name="ib_task_mean_fps" value="" />
+    <!-- <input type="submit" id="most_submit" name="most_submit" value="Continue" /> -->
+    </fieldset>
+    </form>
+</div>
+</body>
+</html>
